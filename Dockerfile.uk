@@ -1,0 +1,51 @@
+FROM digitalmarketplace/base-api:10.0.3
+
+ENV CLAMAV_VERSION 0.
+
+RUN echo "deb http://http.debian.net/debian/ buster main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb http://http.debian.net/debian/ buster-updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo "deb http://security.debian.org/ buster/updates main contrib non-free" >> /etc/apt/sources.list && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+        build-essential \
+        clamav-daemon=${CLAMAV_VERSION}* \
+        clamav-freshclam=${CLAMAV_VERSION}* \
+        libclamunrar9 \
+        wget nano git curl bash \
+        openssh-server \
+    && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY config/freshclam.conf /etc/clamav
+
+# RUN wget https://database.clamav.net/main.cvd
+RUN freshclam
+
+RUN mkdir /var/run/clamav && \
+    chown clamav:clamav /var/run/clamav && \
+    chmod 750 /var/run/clamav
+
+RUN sed -i 's/^Foreground .*$/Foreground true/g' /etc/clamav/clamd.conf && \
+    echo "TCPSocket 3310" >> /etc/clamav/clamd.conf
+
+# web server needs access to the clamd socket
+RUN usermod -a -G clamav uwsgi
+
+COPY config/additional-supervisord.conf /home/vcap/additional-supervisord.conf
+RUN cat /home/vcap/additional-supervisord.conf >> /etc/supervisord.conf
+
+COPY config/additional-awslogs.conf /home/vcap/additional-awslogs.conf
+RUN cat /home/vcap/additional-awslogs.conf >> /etc/awslogs.conf
+
+COPY config/eicar.ndb.part-a /root/
+COPY config/eicar.ndb.part-b /root/
+COPY config/entrypoint.sh /root/
+# the contents of this custom virus definition are simply Eicar-Test-Signature:0:*:<literal eicar string in hex>
+# and because it contains a literal representation of the eicar string we store it encrypted with a one-time-pad.
+RUN python -c 'a = open("/root/eicar.ndb.part-a", "rb"); b = open("/root/eicar.ndb.part-b", "rb"); c = open("/var/lib/clamav/eicar.ndb", "wb"); c.write(bytes(A^B for A, B in zip(a.read(), b.read()))); c.close()'
+
+WORKDIR /app
+
+
+

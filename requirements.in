@@ -1,0 +1,14 @@
+# Run `make freeze-requirements` to update requirements.txt
+# with package version changes made in requirements.in
+
+Flask>=1.1,<2
+itsdangerous
+
+clamd==1.0.2
+validatesns==0.1.1
+psutil==5.8.0
+defusedxml==0.7.1
+
+digitalmarketplace-utils
+
+gunicorn>=20,<21
